@@ -1002,10 +1002,107 @@ export async function giveToPlayer(bot, itemType, username, num=1) {
     return false;
 }
 
+async function detectDoorsInPath(bot, targetX, targetY, targetZ) {
+    /**
+     * Detect doors along the planned pathfinding route.
+     * @param {MinecraftBot} bot, reference to the minecraft bot.
+     * @param {number} targetX, target x coordinate.
+     * @param {number} targetY, target y coordinate.
+     * @param {number} targetZ, target z coordinate.
+     * @returns {Array} Array of door positions that need to be opened.
+     */
+    const doorTypes = ['oak_door', 'spruce_door', 'birch_door', 'jungle_door', 'acacia_door', 'dark_oak_door',
+                       'mangrove_door', 'cherry_door', 'bamboo_door', 'crimson_door', 'warped_door'];
+    
+    try {
+        // Create a temporary movements object to calculate path
+        const movements = new pf.Movements(bot);
+        const goal = new pf.goals.GoalNear(targetX, targetY, targetZ, 2);
+        
+        // Get the planned path
+        const path = await bot.pathfinder.getPathTo(movements, goal, 10000);
+        
+        if (path.status !== 'success' || !path.path) {
+            return [];
+        }
+        
+        const doorsInPath = [];
+        const checkedPositions = new Set();
+        
+        // Optimized door scanning: check strategic positions along path
+        // Sample path nodes to avoid O(n³) complexity on very long paths
+        const maxNodesToCheck = 50; // Limit scanning for performance
+        const nodeStep = Math.max(1, Math.floor(path.path.length / maxNodesToCheck));
+        
+        for (let i = 0; i < path.path.length; i += nodeStep) {
+            const node = path.path[i];
+            const x = Math.floor(node.x);
+            const y = Math.floor(node.y);
+            const z = Math.floor(node.z);
+            
+            // Optimized neighbor check: only check likely door positions
+            const neighborOffsets = [
+                // Direct adjacency (most common door positions)
+                [0, 0, 0], [0, 1, 0], [0, 2, 0], // Current position vertical
+                [-1, 0, 0], [-1, 1, 0], [-1, 2, 0], // West
+                [1, 0, 0], [1, 1, 0], [1, 2, 0],   // East  
+                [0, 0, -1], [0, 1, -1], [0, 2, -1], // North
+                [0, 0, 1], [0, 1, 1], [0, 2, 1]     // South
+            ];
+            
+            for (const [dx, dy, dz] of neighborOffsets) {
+                const checkX = x + dx;
+                const checkY = y + dy;
+                const checkZ = z + dz;
+                const posKey = `${checkX},${checkY},${checkZ}`;
+                
+                if (checkedPositions.has(posKey)) continue;
+                checkedPositions.add(posKey);
+                
+                const block = bot.blockAt(new Vec3(checkX, checkY, checkZ));
+                if (block && doorTypes.includes(block.name)) {
+                    // Check if door is closed
+                    const isOpen = block._properties && block._properties.open;
+                    if (!isOpen) {
+                        // Quick duplicate check using position key
+                        const doorKey = `${block.position.x},${block.position.y},${block.position.z}`;
+                        const alreadyAdded = doorsInPath.some(door => 
+                            `${door.position.x},${door.position.y},${door.position.z}` === doorKey
+                        );
+                        
+                        if (!alreadyAdded) {
+                            doorsInPath.push({
+                                position: block.position,
+                                type: block.name
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Remove duplicates and sort by distance from bot
+        const uniqueDoors = doorsInPath.filter((door, index, self) => 
+            index === self.findIndex(d => d.position.equals(door.position))
+        );
+        
+        uniqueDoors.sort((a, b) => 
+            bot.entity.position.distanceTo(a.position) - bot.entity.position.distanceTo(b.position)
+        );
+        
+        return uniqueDoors;
+        
+    } catch (error) {
+        // If path calculation fails, return empty array
+        return [];
+    }
+}
+
 
 export async function goToPosition(bot, x, y, z, min_distance=2) {
     /**
-     * Navigate to the given position.
+     * Navigate to the given position with automatic door handling.
+     * This function automatically detects and opens any closed doors in the planned path.
      * @param {MinecraftBot} bot, reference to the minecraft bot.
      * @param {number} x, the x coordinate to navigate to. If null, the bot's current x coordinate will be used.
      * @param {number} y, the y coordinate to navigate to. If null, the bot's current y coordinate will be used.
@@ -1015,6 +1112,7 @@ export async function goToPosition(bot, x, y, z, min_distance=2) {
      * @example
      * let position = world.world.getNearestBlock(bot, "oak_log", 64).position;
      * await skills.goToPosition(bot, position.x, position.y, position.x + 20);
+     * // The bot will automatically open any doors it encounters on the way
      **/
     if (x == null || y == null || z == null) {
         log(bot, `Missing coordinates, given x:${x} y:${y} z:${z}`);
@@ -1024,6 +1122,34 @@ export async function goToPosition(bot, x, y, z, min_distance=2) {
         bot.chat('/tp @s ' + x + ' ' + y + ' ' + z);
         log(bot, `Teleported to ${x}, ${y}, ${z}.`);
         return true;
+    }
+    
+    // Detect and handle doors in the path before pathfinding
+    try {
+        const doorsToOpen = await detectDoorsInPath(bot, x, y, z);
+        if (doorsToOpen.length > 0) {
+            log(bot, `Detected ${doorsToOpen.length} closed door(s) in path. Opening doors...`);
+            
+            for (const door of doorsToOpen) {
+                try {
+                    // Use existing useDoor function for each door
+                    const success = await useDoor(bot, door.position);
+                    if (success) {
+                        log(bot, `Opened ${door.type} at ${door.position.x}, ${door.position.y}, ${door.position.z}`);
+                        // Small delay to ensure door is fully opened before continuing
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                    } else {
+                        log(bot, `Failed to open ${door.type} at ${door.position.x}, ${door.position.y}, ${door.position.z}`);
+                    }
+                } catch (doorError) {
+                    log(bot, `Error opening door: ${doorError.message}`);
+                    // Continue with other doors even if one fails
+                }
+            }
+        }
+    } catch (detectionError) {
+        // If door detection fails, continue with normal pathfinding
+        log(bot, `Door detection failed: ${detectionError.message}. Proceeding with normal pathfinding.`);
     }
     
     const movements = new pf.Movements(bot);

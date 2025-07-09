@@ -63,12 +63,28 @@ void (async () => {
         const ctx = AgentContext.fromInitialGoal(goalPayload);
         const machine = new StateMachine(new WaitState());
 
+        let startTs = Date.now();
+
         subscribe('goal', () => {
             ctx.hasNewGoal = true;
+            ctx.readyToPlan = false;
+            ctx.planReady = false;
+            ctx.goalDone = false;
+            ctx.step_cnt = 0;
+            startTs = Date.now();
         });
 
         function loop() {
+            const elapsed = Date.now() - startTs;
+            if (ctx.hasNewGoal && elapsed > 500) {
+                ctx.readyToPlan = true;
+            }
+            if (ctx.planReady && elapsed > 1000) {
+                ctx.goalDone = true;
+            }
+
             machine.tick(ctx);
+
             if (ctx.goalDone) {
                 publish('goal_done');
                 ctx.goalDone = false;

@@ -1,6 +1,14 @@
+/* global process */
+/* eslint-env node */
 import { Agent } from '../agent/agent.js';
 import { serverProxy } from '../agent/mindserver_proxy.js';
 import yargs from 'yargs';
+import { bus, publish, subscribe } from '../../messageBus.js';
+import { AgentContext } from '../../context.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const { StateMachine, WaitState } = require('../../dst.js');
 
 const args = process.argv.slice(2);
 if (args.length < 1) {
@@ -35,9 +43,14 @@ const argv = yargs(args)
         type: 'number',
         description: 'port of mindserver'
     })
+    .option('goal', {
+        alias: 'g',
+        type: 'string',
+        description: 'initial goal payload as JSON'
+    })
     .argv;
 
-(async () => {
+void (async () => {
     try {
         console.log('Connecting to MindServer');
         await serverProxy.connect(argv.name, argv.port);
@@ -45,6 +58,24 @@ const argv = yargs(args)
         const agent = new Agent();
         serverProxy.setAgent(agent);
         await agent.start(argv.load_memory, argv.init_message, argv.count_id);
+
+        const goalPayload = argv.goal ? JSON.parse(argv.goal) : null;
+        const ctx = AgentContext.fromInitialGoal(goalPayload);
+        const machine = new StateMachine(new WaitState());
+
+        subscribe('goal', () => {
+            ctx.hasNewGoal = true;
+        });
+
+        function loop() {
+            machine.tick(ctx);
+            if (ctx.goalDone) {
+                publish('goal_done');
+                ctx.goalDone = false;
+            }
+        }
+
+        setInterval(loop, 50);
     } catch (error) {
         console.error('Failed to start agent process:');
         console.error(error.message);

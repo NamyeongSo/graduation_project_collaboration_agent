@@ -1,3 +1,5 @@
+/* global process */
+/* eslint-env node */
 import { Agent } from '../agent/agent.js';
 import { serverProxy } from '../agent/mindserver_proxy.js';
 import yargs from 'yargs';
@@ -48,7 +50,7 @@ const argv = yargs(args)
     })
     .argv;
 
-(async () => {
+void (async () => {
     try {
         console.log('Connecting to MindServer');
         await serverProxy.connect(argv.name, argv.port);

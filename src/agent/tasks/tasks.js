@@ -298,11 +298,11 @@ export class Task {
         }
 
         this.name = this.agent.name;
-        this.available_agents = []
+        this.available_agents = [];
     }
 
     updateAvailableAgents(agents) {
-        this.available_agents = agents
+        this.available_agents = agents;
     }
 
     // Add this method if you want to manually reset the hells_kitchen progress
@@ -377,8 +377,8 @@ export class Task {
         let other_names = this.available_agents.filter(n => n !== this.name);
         const elapsedTime = (Date.now() - this.taskStartTime) / 1000;
 
-        if (elapsedTime >= 30 && this.available_agents.length !== this.data.agent_count) {
-            console.log('No other agents found. Task unsuccessful.');
+        if (elapsedTime >= 30 && this.available_agents.length < this.data.agent_count) {
+            console.log(`Expected ${this.data.agent_count} agent(s) but found ${this.available_agents.length}. Task unsuccessful.`);
             return {"message": 'No other agents found', "score": 0};
         }
         

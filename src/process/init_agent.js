@@ -8,7 +8,7 @@ import { AgentContext } from '../../context.js';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const { StateMachine, WaitState } = require('../../dst.js');
+const { StateMachine, WaitState } = require('../../dst.cjs');
 
 const args = process.argv.slice(2);
 if (args.length < 1) {

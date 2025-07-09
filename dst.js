@@ -1,3 +1,6 @@
+/* eslint-env node, commonjs */
+/* global module */ 
+
 class State {
   /**
    * Called when entering the state.

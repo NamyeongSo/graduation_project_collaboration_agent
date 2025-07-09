@@ -41,6 +41,10 @@ class WaitState extends State {
 class CommunicationState extends State {
   enter(ctx) {
     console.log('Entering CommunicationState');
+    // Automatically transition to planning after a short delay
+    this.timer = setTimeout(() => {
+      ctx.readyToPlan = true;
+    }, 500);
   }
 
   execute(ctx) {
@@ -51,6 +55,10 @@ class CommunicationState extends State {
   }
 
   exit(ctx) {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
     console.log('Exiting CommunicationState');
   }
 }

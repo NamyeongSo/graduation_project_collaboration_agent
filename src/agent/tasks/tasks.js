@@ -298,11 +298,11 @@ export class Task {
         }
 
         this.name = this.agent.name;
-        this.available_agents = []
+        this.available_agents = [];
     }
 
     updateAvailableAgents(agents) {
-        this.available_agents = agents
+        this.available_agents = agents;
     }
 
     // Add this method if you want to manually reset the hells_kitchen progress
@@ -344,7 +344,7 @@ export class Task {
 
         if (this.task_type === 'techtree') {
             if (this.data.agent_count > 2) {
-                add_string = '\nMake sure to share resources among all agents and to talk to all the agents using startConversation command to coordinate the task instead of talking to just one agent. You can even end current conversation with any agent using endConversation command and then talk to a new agent using startConversation command.'
+                add_string = '\nMake sure to share resources among all agents and to talk to all the agents using startConversation command to coordinate the task instead of talking to just one agent. You can even end current conversation with any agent using endConversation command and then talk to a new agent using startConversation command.';
             }
         }
 
@@ -369,12 +369,15 @@ export class Task {
         if (res && res.valid) {
             // Find all the agents and clear their inventories
             for (let agent of this.available_agents) {
-                this.agent.bot.chat(`/clear ${agent}`);
+                const agentName = typeof agent === 'string' ? agent : agent.name;
+                this.agent.bot.chat(`/clear ${agentName}`);
             }
             // this.agent.bot.chat(`/clear @a`);
             return {"message": 'Task successful', "score": res.score};
         }
-        let other_names = this.available_agents.filter(n => n !== this.name);
+        let other_names = this.available_agents
+            .map(a => typeof a === 'string' ? a : a.name)
+            .filter(n => n !== this.name);
         const elapsedTime = (Date.now() - this.taskStartTime) / 1000;
 
         if (elapsedTime >= 30 && this.available_agents.length !== this.data.agent_count) {
@@ -399,7 +402,11 @@ export class Task {
     async setAgentGoal() {
         let agentGoal = this.getAgentGoal();
         if (agentGoal && this.data.agent_count + this.data.human_count > 1) {
-            agentGoal += "You have to collaborate with other agents/bots, namely " + this.available_agents.filter(n => n !== this.name).join(', ') + " to complete the task as soon as possible by dividing the work among yourselves.";
+            const agentNames = this.available_agents
+                .map(a => typeof a === 'string' ? a : a.name)
+                .filter(n => n !== this.name)
+                .join(', ');
+            agentGoal += "You have to collaborate with other agents/bots, namely " + agentNames + " to complete the task as soon as possible by dividing the work among yourselves.";
             console.log(`Setting goal for agent ${this.agent.count_id}: ${agentGoal}`);
         }
         await executeCommand(this.agent, `!goal("${agentGoal}")`);
@@ -439,7 +446,7 @@ export class Task {
             
             initialInventory = this.data.initial_inventory[this.agent.count_id.toString()] || {};
             console.log("Initial inventory for agent", this.agent.count_id, ":", initialInventory);
-            console.log("")
+            console.log("");
 
             if (this.data.human_count > 0 && this.agent.count_id === 0) {
                 // this.num_humans = num_keys - this.data.num_agents;
@@ -492,10 +499,14 @@ export class Task {
         }
         await new Promise((resolve) => setTimeout(resolve, 500));
         if (this.data.conversation && this.agent.count_id === 0) {
-            let other_name = this.available_agents.filter(n => n !== this.name)[0];
+            let other_name = this.available_agents
+                .map(a => typeof a === 'string' ? a : a.name)
+                .filter(n => n !== this.name)[0];
             let waitCount = 0;
             while (other_name === undefined && waitCount < 20) {
-                other_name = this.available_agents.filter(n => n !== this.name)[0];
+                other_name = this.available_agents
+                    .map(a => typeof a === 'string' ? a : a.name)
+                    .filter(n => n !== this.name)[0];
                 await new Promise((resolve) => setTimeout(resolve, 1000));
                 waitCount++;
             }
@@ -520,21 +531,21 @@ export class Task {
         // Finding if there is a human player on the server
         for (const playerName in bot.players) {
             const player = bot.players[playerName];
-            if (!this.available_agents.some((n) => n === playerName)) {
+            if (!this.available_agents.some((n) => (typeof n === 'string' ? n : n.name) === playerName)) {
                 console.log('Found human player:', player.username);
-                human_player_name = player.username
+                human_player_name = player.username;
                 break;
             }
         }
 
         // go the human if there is one and not required for the task
         if (human_player_name && this.data.human_count === 0) {
-            console.log(`Teleporting ${this.name} to human ${human_player_name}`)
-            bot.chat(`/tp ${this.name} ${human_player_name}`)
-        }
-        else {
-            console.log(`Teleporting ${this.name} to ${this.available_agents[0]}`)
-            bot.chat(`/tp ${this.name} ${this.available_agents[0]}`);
+            console.log(`Teleporting ${this.name} to human ${human_player_name}`);
+            bot.chat(`/tp ${this.name} ${human_player_name}`);
+        } else {
+            const firstAgentName = typeof this.available_agents[0] === 'string' ? this.available_agents[0] : this.available_agents[0]?.name;
+            console.log(`Teleporting ${this.name} to ${firstAgentName}`);
+            bot.chat(`/tp ${this.name} ${firstAgentName}`);
         }
 
         await new Promise((resolve) => setTimeout(resolve, 200));
@@ -586,9 +597,8 @@ export class Task {
                     bot.chat(command);
                 }
             }
-            else{
-                console.log('no construction blueprint?')
+            else {
+                console.log('no construction blueprint?');
             }
         }
-    }
-}
+    }}
